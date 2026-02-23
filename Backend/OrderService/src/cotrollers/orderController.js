@@ -1,5 +1,5 @@
-import  Order from '../models/order'
-import { getProduct,InitiatePayment,getPaymentStatus } from '../service/Service-client'
+import  Order from '../models/order.js'
+import { getProduct,InitiatePayment,getPaymentStatus } from '../service/Service-client.js'
 
 //POST api/orders
 const createOrders = async(req,res,next) =>{
