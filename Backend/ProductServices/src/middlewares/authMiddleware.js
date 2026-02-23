@@ -15,12 +15,14 @@ const protect = async (req, res, next) => {
 
   try {
     const response = await axios.post(
-      `${AUTH_SERVICE_URL}/api/auth/verify`,
+      `${process.env.AUTH_SERVICE_URL}/api/auth/verify`,
       {},
       { headers: { Authorization: authHeader } }
     );
 
     req.user = response.data.user;
+    console.log(req.user);
+    
     next();
   } catch (err) {
     if (err.response) {
