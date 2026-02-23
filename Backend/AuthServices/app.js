@@ -21,6 +21,11 @@ app.use(errorHandler);
 //Routes
 app.use("/api/auth", authRoutes);
 
+//Health Check
+app.get('/health',(req,res) => {
+  res.status(200).json({status:'OK'});
+})
+
 
 // DB + Start
 mongoose
