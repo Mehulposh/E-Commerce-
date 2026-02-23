@@ -1,4 +1,4 @@
-import { getRedis } from './redis';
+import { getRedis } from './redis.js';
 
 const TTL = parseInt(process.env.CACHE_TTL) || 3600; // 1 hour default
 
