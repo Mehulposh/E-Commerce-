@@ -77,7 +77,7 @@ const createProduct = async (req, res, next) => {
       category,
       stock,
       imageUrl,
-      createdBy: req.user.id,
+      createdBy: req.user._id,
     });
 
     await invalidateProductCache();
