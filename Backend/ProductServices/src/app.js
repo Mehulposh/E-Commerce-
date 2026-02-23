@@ -2,9 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
 import dotenv from "dotenv";
-import productRoutes from './routes/product.routes';
-import { errorHandler } from './middleware/error.middleware';
-import { connectRedis } from './config/redis';
+import productRoutes from './routes/productRoutes.js';
+import { errorHandler } from './middlewares/errorHandler.js';
+import { connectRedis } from './utils/redis.js';
 
 dotenv.config()
 
@@ -19,8 +19,10 @@ app.use(express.json());
 // Routes
 app.use('/api/products', productRoutes);
 
-// Health check
-app.get('/health', (req, res) => res.json({ status: 'ok', service: 'product-service' }));
+//Health Check
+app.get('/health',(req,res) => {
+  res.status(200).json({status:'OK'});
+})
 
 // Error handler
 app.use(errorHandler);
