@@ -10,7 +10,7 @@ const protect = async(req,res,next) => {
     try {
         req.user = await verifyToken(authHeader);
         next();
-    } catch (error) {
+    } catch (err) {
         if (err.response) {
             return res.status(err.response.status).json(err.response.data);
         }
@@ -20,7 +20,7 @@ const protect = async(req,res,next) => {
     
 }
 
-const restrictTo = (...roles) => {
+const restrictTo = (...roles) => (req, res, next) => {
     if(!req.user || !roles.includes(req.user.role)){
         return res.status(403).json({ message: 'Insufficient permissions' });
     }
