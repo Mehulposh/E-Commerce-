@@ -4,9 +4,9 @@ import { getProduct,InitiatePayment,getPaymentStatus } from '../service/Service-
 //POST api/orders
 const createOrders = async(req,res,next) =>{
     try {
-        const {items , shipingAddress , notes} = req.body
+        const {items , shippingAddress , notes} = req.body
 
-        const user_id = req.user_id.toString()
+        const userId = req.user?._id?.toString() || req.user?.userId?.toString();
 
         // ── 1. Validate & enrich each item from Product Service ──
         const enrichedItems = [];
@@ -43,7 +43,7 @@ const createOrders = async(req,res,next) =>{
 
         // ── 2. Create the order ───────────────────────────────────
         const order = await Order.create({
-            user_id,
+            userId,
             items: enrichedItems,
             totalAmount,
             shippingAddress,
@@ -58,7 +58,7 @@ const createOrders = async(req,res,next) =>{
             paymentData = await InitiatePayment({
                 orderId: order._id.toString(),
                 orderNumber: order.orderNumber,
-                user_id,
+                userId,
                 amount: totalAmount,
                 currency: 'USD',
             })
@@ -68,7 +68,7 @@ const createOrders = async(req,res,next) =>{
             await order.save()
 
         } catch (error) {
-            console.error('[Order] Payment initiation failed:', err.message);
+            console.error('[Order] Payment initiation failed:', error.message);
         }
 
         res.status(201).json({
@@ -196,7 +196,7 @@ const CancelOrder = async(req,res,next) => {
 // POST /api/orders/:id/pay  (manually trigger payment for pending order)
 const payOrder = async(req,res,next) => {
     try {
-        const order = await Order.findById(req,params.id)
+        const order = await Order.findById(req.params.id)
 
         if (!order) return res.status(404).json({ message: 'Order not found' });
 
