@@ -22,7 +22,7 @@ const verifyToken = async(token) => {
  * Fetch a single product from Product Service
 */
 const getProduct = async(productId) => {
-    const response = axios.get(`${PRODUCT_URL}/api/products/${productId}`)
+    const response = await axios.get(`${PRODUCT_URL}/api/products/${productId}`)
     return response.data.product
 }
 
