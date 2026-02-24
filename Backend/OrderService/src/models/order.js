@@ -57,7 +57,7 @@ const orderSchema = new mongoose.Schema(
 );
 
 // Auto-generate order number before save
-orderSchema.pre('save', async function (next) {
+orderSchema.pre('validate', function (next) {
   if (!this.orderNumber) {
     const timestamp = Date.now().toString(36).toUpperCase();
     const random = Math.random().toString(36).substring(2, 6).toUpperCase();
