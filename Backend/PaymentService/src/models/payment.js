@@ -3,7 +3,7 @@ import {v4 as uuidv4} from 'uuid'
 
 
 const paymentSchema = new mongoose.Schema({
-    id: {
+    paymentId: {
         type: String,
         unique: true,
         default :() => `pay_${uuidv4().replace(/-/g, '').substring(0, 20)}`,
@@ -61,7 +61,6 @@ const paymentSchema = new mongoose.Schema({
 
 paymentSchema.index({ orderId: 1 });
 paymentSchema.index({ userId: 1 });
-paymentSchema.index({ id: 1 });
 paymentSchema.index({ status: 1 });
 
 export default mongoose.model('Payment', paymentSchema);
