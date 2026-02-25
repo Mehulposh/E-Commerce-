@@ -6,7 +6,7 @@ import {
     getPaymentByOrder,
     refundPayment
 } from '../controllers/PaymentControllers.js'
-import { protect, restrictTo } from '../middlewares/authMiddlewares'
+import { protect, restrictTo } from '../middlewares/authMiddlewares.js'
 
 const router = express.Router()
 

@@ -1,4 +1,4 @@
-import { verifyToken } from "../service/serviceClient";
+import { verifyToken } from "../service/serviceClient.js";
 
 const protect = async(req,res,next) => {
     const authHeader = req.headers.authorization
