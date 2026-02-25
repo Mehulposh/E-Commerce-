@@ -5,9 +5,9 @@ import { notifyOrderPaymentUpdate } from '../service/serviceClient.js'
 // POST /api/payments/initiate  (called by Order Service internally)
 const initiatePayment = async(req,res,next) => {
     try {
-        const {orderId , orderNumber , userID, amount , currency , cardNumber , method} = req.body
+        const {orderId , orderNumber , userId, amount , currency , cardNumber , method} = req.body
 
-        if(!orderId || !userID || !amount){
+        if(!orderId || !userId || !amount){
            return res.status(400).json({message: 'orderId, userId, and amount are required' });
         }
 
@@ -22,10 +22,10 @@ const initiatePayment = async(req,res,next) => {
         }
 
         // Create payment record in pending state
-        const newPayment = Payment.create({
+        const newPayment = await Payment.create({
             orderId,
             orderNumber,
-            userID,
+            userId,
             amount,
             method: "simulated",
             currency: currency || 'USD',
@@ -35,7 +35,7 @@ const initiatePayment = async(req,res,next) => {
         // ── Run the simulation ────────────────────────
         const result  = await processPayment({amount,currency,cardNumber,method})
 
-        newPayment.status= result.status ? "success" : "failed";
+        newPayment.status= result.success ? "succeeded" : "failed";
         newPayment.gatewayTransactionId = result.transactionId;
         newPayment.cardLast4 = result.cardLast4;
         newPayment.cardBrand = result.cardBrand;
@@ -48,15 +48,15 @@ const initiatePayment = async(req,res,next) => {
         // ── Notify Order Service ────────────────────────────────
         await notifyOrderPaymentUpdate(
             orderId,
-            result.success? "success" : "failed",
-            newPayment.id
+            result.success? "succeeded" : "failed",
+            newPayment.paymentId
         )
 
         const statusCode = result.success ? 201 : 402;
 
         res.status(statusCode).json({
             message: result.success ? 'Payment successful' : 'Payment failed',
-            payment,
+            newPayment,
         });
     } catch (error) {
         next(error)
