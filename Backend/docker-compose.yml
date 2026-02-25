@@ -28,7 +28,7 @@ services:
     command: npm run dev
     environment:
       PORT: 3001
-      MONGO_URI: mongodb://mongo:27017/E-Commerce
+      MONGO_URI: mongodb://mongo:27017/user_db
       JWT_SECRET: ${JWT_SECRET:-change_me_in_production_jwt}
       JWT_EXPIRES_IN: 15m
       REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET:-change_me_in_production_refresh}
@@ -59,7 +59,7 @@ services:
     command: npm run dev
     environment:
       PORT: 3002
-      MONGO_URI: mongodb://mongo:27017/E-Commerce
+      MONGO_URI: mongodb://mongo:27017/product_Db
       REDIS_URL: redis://redis:6379
       AUTH_SERVICE_URL: http://auth-service:3001
       CACHE_TTL: 3600
@@ -88,7 +88,7 @@ services:
     container_name: order-service
     environment:
       PORT: 3003
-      MONGO_URI: mongodb://mongo:27017/E-Commerce
+      MONGO_URI: mongodb://mongo:27017/order_Db
       AUTH_SERVICE_URL: http://auth-service:3001
       PRODUCT_SERVICE_URL: http://product-service:3002
       # PAYMENT_SERVICE_URL: http://payment-service:3004
@@ -102,6 +102,34 @@ services:
         condition: service_healthy
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://localhost:3003/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # ─── Payment Service ────────────────────────────────────────
+  payment-service:
+    build:
+      context: ./PaymentService
+      dockerfile: Dockerfile
+    container_name: payment-service
+    environment:
+      PORT: 3004
+      MONGO_URI: mongodb://mongo:27017/payment_db
+      AUTH_SERVICE_URL: http://auth-service:3001
+      ORDER_SERVICE_URL: http://order-service:3003
+      SIMULATED_FAILURE_RATE: ${SIMULATED_FAILURE_RATE:-0.1}
+      NODE_ENV: ${NODE_ENV:-development}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3004/health']
       interval: 10s
       timeout: 5s
       retries: 5
