@@ -8,6 +8,10 @@ const createOrders = async(req,res,next) =>{
 
         const userId = req.user?._id?.toString() || req.user?.userId?.toString();
 
+        // ADD THIS LINE
+        console.log('[Order] req.user:', JSON.stringify(req.user));
+        console.log('[Order] userId:', userId);
+
         // ── 1. Validate & enrich each item from Product Service ──
         const enrichedItems = [];
         let totalAmount = 0;
@@ -63,20 +67,25 @@ const createOrders = async(req,res,next) =>{
                 currency: 'USD',
             })
 
-            order.paymentId = paymentData.payment.id
+            console.log('[Order] Payment response:', JSON.stringify(paymentData)); 
+            order.paymentId = paymentData.newPayment.paymentId
 
             await order.save()
 
         } catch (error) {
             console.error('[Order] Payment initiation failed:', error.message);
+            console.error('[Order] Payment initiation failed:', error.message);
+        console.error('[Order] Payment error response:', error.response?.data);
+        console.error('[Order] Payment error status:', error.response?.status);
         }
 
         res.status(201).json({
             message: 'Order created successfully',
             order,
-            payment: paymentData?.payment || null,
+            payment: paymentData?.newPayment || null,
         });
     } catch (error) {
+         
         next(error)
     }
 }
