@@ -429,15 +429,320 @@ NODE_ENV=development
 
 ---
 
-## 🔜 What's Next (Phase 3)
+# 🚀 Microservices — Phase 3
 
-- Add RabbitMQ message broker
-- Replace direct HTTP callbacks with async events
-- `order.created` → Payment Service processes automatically
-- `payment.succeeded/failed` → Order Service updates status
-- `order.cancelled` → Payment Service auto-refunds
-## 🔜 What's Next (Phase 2)
+RabbitMQ event-driven architecture + Notification Service added on top of Phase 2.
 
-- Order Service
-- Payment simulation
-- Inter-service REST calls (Product → Auth, Order → Product)
+## 🏗️ Architecture
+
+```
+Client
+  │
+  ▼
+[ Nginx API Gateway ] :80
+  ├── /api/auth/*            → Auth Service          :3001
+  ├── /api/products/*        → Product Service       :3002
+  ├── /api/orders/*          → Order Service         :3003
+  ├── /api/payments/*        → Payment Service       :3004
+  └── /api/notifications/*   → Notification Service  :3005
+
+[ RabbitMQ ] :5672 (AMQP) | :15672 (Management UI)
+  ├── orders.exchange   (topic)
+  └── payments.exchange (topic)
+
+[ MongoDB ]  → authdb, productdb, orderdb, paymentdb, notificationdb
+[ Redis    ]  → Product cache
+```
+
+---
+
+## 🔄 What Changed from Phase 2
+
+Phase 2 used **direct HTTP calls** between services:
+```
+Order → HTTP POST → Payment
+Payment → HTTP PATCH → Order (callback)
+```
+
+Phase 3 replaces this with **async RabbitMQ events**:
+```
+Order  ──publishes──▶  order.created       ──▶  Payment Service processes payment
+Payment──publishes──▶  payment.succeeded   ──▶  Order Service confirms order
+Payment──publishes──▶  payment.succeeded   ──▶  Notification Service sends email + in-app
+Payment──publishes──▶  payment.failed      ──▶  Order Service cancels order
+Payment──publishes──▶  payment.failed      ──▶  Notification Service sends failure email
+Order  ──publishes──▶  order.cancelled     ──▶  Payment Service auto-refunds
+Payment──publishes──▶  payment.refunded    ──▶  Order Service marks refunded
+Payment──publishes──▶  payment.refunded    ──▶  Notification Service sends refund email
+```
+
+---
+
+## 📁 New Structure (Phase 3 additions)
+
+```
+microservices/
+├── notification-service/          ← NEW
+│   ├── Dockerfile
+│   ├── package.json
+│   └── src/
+│       ├── index.js
+│       ├── models/notification.model.js
+│       ├── controllers/notification.controller.js
+│       ├── routes/notification.routes.js
+│       ├── middleware/auth.middleware.js
+│       ├── events/
+│       │   ├── rabbitmq.js              ← RabbitMQ connection
+│       │   └── notification.consumer.js ← listens to payment/order events
+│       ├── services/
+│       │   ├── email.service.js         ← Nodemailer / Brevo SMTP
+│       │   └── inapp.service.js         ← saves in-app messages to DB
+│       └── templates/
+│           └── email.templates.js       ← HTML email templates
+│
+├── order-service/src/events/      ← UPDATED
+│   ├── rabbitmq.js
+│   ├── order.publisher.js         ← now includes userEmail in events
+│   └── order.consumer.js
+│
+└── payment-service/src/events/    ← UPDATED
+    ├── rabbitmq.js
+    ├── payment.publisher.js       ← now includes userEmail in events
+    └── payment.consumer.js
+```
+
+---
+
+## 📨 RabbitMQ Events
+
+### Exchanges
+
+| Exchange           | Type  | Used By                          |
+|--------------------|-------|----------------------------------|
+| `orders.exchange`  | topic | Order Service publishes          |
+| `payments.exchange`| topic | Payment Service publishes        |
+
+### Routing Keys & Consumers
+
+| Routing Key           | Publisher       | Consumers                              |
+|-----------------------|-----------------|----------------------------------------|
+| `order.created`       | Order Service   | Payment Service                        |
+| `order.cancelled`     | Order Service   | Payment Service, Notification Service  |
+| `order.status.updated`| Order Service   | —                                      |
+| `payment.succeeded`   | Payment Service | Order Service, Notification Service    |
+| `payment.failed`      | Payment Service | Order Service, Notification Service    |
+| `payment.refunded`    | Payment Service | Order Service, Notification Service    |
+
+### Queues
+
+| Queue Name                                  | Binds To             |
+|---------------------------------------------|----------------------|
+| `payment-service.order.created`             | `order.created`      |
+| `payment-service.order.cancelled`           | `order.cancelled`    |
+| `order-service.payment.succeeded`           | `payment.succeeded`  |
+| `order-service.payment.failed`              | `payment.failed`     |
+| `order-service.payment.refunded`            | `payment.refunded`   |
+| `notification-service.payment.succeeded`    | `payment.succeeded`  |
+| `notification-service.payment.failed`       | `payment.failed`     |
+| `notification-service.payment.refunded`     | `payment.refunded`   |
+| `notification-service.order.cancelled`      | `order.cancelled`    |
+
+> All queues are **durable** — messages survive RabbitMQ restarts.
+
+---
+
+## 🔔 Notification Service
+
+### What it does
+
+1. **Listens** to RabbitMQ events from Payment and Order services
+2. **Sends email** via Brevo SMTP to the customer
+3. **Saves in-app message** to MongoDB for the customer to read via API
+
+### Events handled
+
+| Event               | Email Subject                        | In-App Message                              |
+|---------------------|--------------------------------------|---------------------------------------------|
+| `payment.succeeded` | ✅ Order Confirmed — {orderNumber}   | Your order has been confirmed!              |
+| `payment.failed`    | ❌ Payment Failed — {orderNumber}    | Payment failed, please try again            |
+| `payment.refunded`  | 💰 Refund Processed — {orderNumber} | Refund has been processed                   |
+| `order.cancelled`   | 🚫 Order Cancelled — {orderNumber}  | Your order has been cancelled               |
+
+---
+
+## 📡 Notification API
+
+| Method | Endpoint                        | Auth | Description                      |
+|--------|---------------------------------|------|----------------------------------|
+| GET    | `/api/notifications`            | ✅   | List your notifications          |
+| GET    | `/api/notifications/unread-count` | ✅ | Get unread count                 |
+| PATCH  | `/api/notifications/read-all`   | ✅   | Mark all as read                 |
+| PATCH  | `/api/notifications/:id/read`   | ✅   | Mark one as read                 |
+
+#### Get Notifications
+```bash
+curl http://localhost/api/notifications \
+  -H "Authorization: Bearer <access_token>"
+```
+
+#### Response
+```json
+{
+  "notifications": [
+    {
+      "_id": "...",
+      "userId": "...",
+      "type": "in_app",
+      "event": "payment.succeeded",
+      "body": "✅ Your order ORD-MM9D-XXXX has been confirmed!",
+      "status": "sent",
+      "orderId": "...",
+      "orderNumber": "ORD-MM9D-XXXX",
+      "createdAt": "2026-03-02T16:08:33.526Z"
+    }
+  ],
+  "unreadCount": 3,
+  "pagination": {
+    "total": 10,
+    "page": 1,
+    "limit": 20,
+    "pages": 1
+  }
+}
+```
+
+---
+
+## 🔧 Environment Variables
+
+### order-service/.env
+```env
+PORT=3003
+MONGO_URI=mongodb://mongo:27017/orderdb
+AUTH_SERVICE_URL=http://auth-service:3001
+PRODUCT_SERVICE_URL=http://product-service:3002
+RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+NODE_ENV=development
+```
+
+### payment-service/.env
+```env
+PORT=3004
+MONGO_URI=mongodb://mongo:27017/paymentdb
+AUTH_SERVICE_URL=http://auth-service:3001
+RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+SIMULATED_FAILURE_RATE=0.1
+NODE_ENV=development
+```
+
+### notification-service/.env
+```env
+PORT=3005
+MONGO_URI=mongodb://mongo:27017/notificationdb
+AUTH_SERVICE_URL=http://auth-service:3001
+RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+NODE_ENV=production
+
+# Brevo SMTP (send to any email, no domain required)
+SMTP_HOST=smtp-relay.brevo.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your_brevo_smtp_login      # from Brevo SMTP settings
+SMTP_PASS=your_brevo_smtp_key        # from Brevo SMTP keys
+EMAIL_FROM=your_verified_sender@gmail.com
+EMAIL_FROM_NAME=YourStore
+```
+
+---
+
+## 🐳 Docker Services (Phase 1 + 2 + 3)
+
+| Service              | Port  | Notes                                        |
+|----------------------|-------|----------------------------------------------|
+| Nginx (Gateway)      | 80    | Single entry point                           |
+| Auth Service         | 3001  | Internal only                                |
+| Product Service      | 3002  | Internal only                                |
+| Order Service        | 3003  | Internal only                                |
+| Payment Service      | 3004  | Internal only                                |
+| Notification Service | 3005  | Internal only                                |
+| RabbitMQ             | 5672  | AMQP — internal only                        |
+| RabbitMQ UI          | 15672 | Management dashboard (guest/guest)           |
+| MongoDB              | 27017 | authdb, productdb, orderdb, paymentdb, notificationdb |
+| Redis                | 6379  | Product cache                                |
+
+---
+
+## 🚦 Quick Start
+
+```bash
+# Start Phase 3 services
+docker compose up -d --build order-service payment-service notification-service rabbitmq
+
+# Verify all services healthy
+docker compose ps
+
+# Check RabbitMQ management UI
+# Open http://localhost:15672 → login: guest / guest
+# You should see all exchanges and queues listed
+
+# Verify health endpoints
+curl http://localhost/health/notifications
+```
+
+---
+
+## 🐇 RabbitMQ Management UI
+
+Open `http://localhost:15672` in your browser (login: `guest` / `guest`).
+
+Useful tabs:
+- **Exchanges** — see `orders.exchange` and `payments.exchange`
+- **Queues** — see all service queues and message counts
+- **Connections** — see which services are connected
+
+---
+
+## 📧 Email Setup (Brevo)
+
+1. Sign up at [brevo.com](https://brevo.com) — free, 300 emails/day
+2. Go to **SMTP & API** → copy SMTP credentials into `.env`
+3. Go to **Senders & IP** → **Senders** → add and verify your sender email
+4. Set `NODE_ENV=production` in notification-service `.env`
+5. The `EMAIL_FROM` must match your verified sender address
+
+To monitor sent emails: Brevo dashboard → **Transactional** → **Email Logs**
+
+---
+
+## 🔁 Complete Order Flow (Phase 3)
+
+```
+1. POST /api/orders
+      │
+      ├── validates stock (Product Service HTTP)
+      ├── creates Order (status: pending)
+      └── publishes → order.created (RabbitMQ)
+                          │
+                          ▼
+               Payment Service consumes
+                          │
+                          ├── creates Payment record
+                          ├── runs payment simulation
+                          └── publishes → payment.succeeded / payment.failed
+                                              │
+                          ┌───────────────────┴──────────────────┐
+                          ▼                                        ▼
+               Order Service consumes                Notification Service consumes
+                          │                                        │
+                          └── updates Order status                 ├── sends email (Brevo)
+                              confirmed / cancelled                └── saves in-app message
+```
+
+---
+
+## 🔜 What's Next (Phase 4 ideas)
+
+- Stock reservation — reserve stock on `order.created`, release on `order.cancelled`
+- Notification Service sends OTP emails for auth service
+- Admin dashboard for order/payment analytics
+- Webhook support for real payment gateway (Stripe/Razorpay)
