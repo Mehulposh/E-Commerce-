@@ -161,6 +161,37 @@ services:
     networks:
       - app-network
     restart: unless-stopped
+
+
+   # ─── Notification Service ────────────────────────────────────
+  notification-service:
+    build:
+      context: ./NotificationService
+      dockerfile: Dockerfile
+    container_name: notification-service
+    env_file:
+      - ./NotificationService/.env
+    environment:
+      PORT: 3005
+      MONGO_URI: mongodb://mongo:27017/notificationdb
+      AUTH_SERVICE_URL: http://auth-service:3001
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672      
+    depends_on:
+      mongo:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3005/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - app-network
+    restart: unless-stopped
    
   # ─── MongoDB ────────────────────────────────────────────────
   mongo:
