@@ -8,7 +8,7 @@ import { publishPaymentSucceeded, publishPaymentFailed, publishPaymentRefunded }
  * Automatically initiates payment for the new order
  */
 const handleOrderCreated = async (payload) => {
-  const { orderId, orderNumber, userId, totalAmount, currency } = payload;
+  const { orderId, orderNumber, userId, totalAmount, currency , userEmail, items, shippingAddress  } = payload;
   console.log(`[Payment] Processing payment for order ${orderNumber}`);
 
   // Prevent duplicate payments
@@ -47,10 +47,10 @@ const handleOrderCreated = async (payload) => {
 
   // Publish result event back — Order Service will pick it up
   if (result.success) {
-    await publishPaymentSucceeded(payment);
+    await publishPaymentSucceeded(payment,  { email: userEmail });
     console.log(`[Payment] ✅ Payment succeeded for order ${orderNumber}`);
   } else {
-    await publishPaymentFailed(payment);
+    await publishPaymentFailed(payment,  { email: userEmail });
     console.log(`[Payment] ❌ Payment failed for order ${orderNumber}: ${result.failureReason}`);
   }
 };

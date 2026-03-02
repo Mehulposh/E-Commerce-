@@ -4,7 +4,7 @@ import { publishEvent, EXCHANGES, ROUTING_KEYS } from './Rabbitmq.js';
  * Published after payment is successfully processeds
  * Order Service listens → confirms the order
  */
-const publishPaymentSucceeded = async (payment) => {
+const publishPaymentSucceeded = async (payment, user = null) => {
   await publishEvent(EXCHANGES.PAYMENTS, ROUTING_KEYS.PAYMENT_SUCCEEDED, {
     paymentId: payment.paymentId,
     orderId: payment.orderId,
@@ -13,6 +13,7 @@ const publishPaymentSucceeded = async (payment) => {
     amount: payment.amount,
     currency: payment.currency,
     transactionId: payment.gatewayTransactionId,
+    userEmail: user?.email || null,
   });
 };
 
