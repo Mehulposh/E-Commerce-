@@ -7,6 +7,8 @@ import {
     refresh,
     verifyToken,
     getMe,
+    verifyOtp,
+    resendOtp
 } from '../controllers/authController.js';
 import { protect } from '../middlewares/authMiddleware.js';
 
@@ -22,6 +24,8 @@ const router = express.Router();
 // Public routes
 router.post('/register', authLimiter, register);
 router.post('/login', authLimiter, login);
+router.post('/verify-otp', authLimiter, verifyOtp);   
+router.post('/resend-otp', authLimiter, resendOtp); 
 router.post('/refresh', refresh);
 router.post('/logout', logout);
 
