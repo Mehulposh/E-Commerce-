@@ -5,18 +5,17 @@ import cors from 'cors';
 import cookieParser from "cookie-parser";
 import authRoutes from "./src/routes/authRoutes.js";
 import errorHandler from "./src/middlewares/errorHandler.js";
-
+import sendOTPEmail from "./src/utils/emailUtils.js";
 dotenv.config();
 const PORT = process.env.PORT
 const app = express();
 
 // Middleware
+app.set('trust proxy', 1);
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
 
-// Error handler
-app.use(errorHandler);
 
 //Routes
 app.use("/api/auth", authRoutes);
@@ -26,11 +25,13 @@ app.get('/health',(req,res) => {
   res.status(200).json({status:'OK'});
 })
 
+// Error handler
+app.use(errorHandler);
 
 // DB + Start
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => {
+  .then(async () => {
     console.log('✅ MongoDB connected');
     app.listen(PORT, () =>
       console.log(`🔐 Auth Service running on port ${process.env.PORT}`)
