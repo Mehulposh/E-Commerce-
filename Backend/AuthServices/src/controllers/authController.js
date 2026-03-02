@@ -5,12 +5,17 @@ import {
   verifyRefreshToken,
 } from '../utils/jwtUtils.js';
 
+import sendOTPEmail from '../utils/emailUtils.js';
+
 const COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
   sameSite: 'strict',
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
 };
+
+const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
+
 
 // POST /api/auth/register
 const register = async (req, res, next) => {
@@ -22,7 +27,69 @@ const register = async (req, res, next) => {
       return res.status(409).json({ message: 'Email already in use' });
     }
 
-    const user = await User.create({ name, email, password ,role});
+    const otp = generateOTP()
+
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000) //10 minutes validity
+
+    const user = await User.create({ 
+      name, 
+      email, 
+      password ,
+      role,
+      otp,
+      otpExpiresAt,
+      isVerified: false,
+      });
+    
+    try {
+      await sendOTPEmail(email,name,otp)
+
+    } catch (error) {
+      console.error('[Auth] Failed to send OTP email:', error.message);
+      
+    }
+
+    res.status(201).json({
+      message: 'Registration successful. Please check your email for the 6-digit verification code.',
+      userId: user._id
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+
+// POST /api/auth/verify-otp
+const verifyOtp = async(req,res,next)=> {
+  try {
+    const {userId , otp} = req.body
+
+    if (!userId || !otp) {
+      return res.status(400).json({ message: 'userId and otp are required' });
+    }
+
+    const user = await User.findById(userId).select('+otp +otpExpiresAt');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ message: 'Email is already verified' });
+    }
+
+    if (!user.otp || user.otp !== otp) {
+      return res.status(400).json({ message: 'Invalid OTP code' });
+    }
+
+    if (user.otpExpiresAt < new Date()) {
+      return res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
+    }
+
+    // Mark verified and clear OTP
+    user.isVerified = true;
+    user.otp = null;
+    user.otpExpiresAt = null;
 
     const accessToken = generateAccessToken({ id: user._id, role: user.role });
     const refreshToken = generateRefreshToken({ id: user._id });
@@ -32,15 +99,52 @@ const register = async (req, res, next) => {
 
     res.cookie('refreshToken', refreshToken, COOKIE_OPTIONS);
 
-    res.status(201).json({
-      message: 'User registered successfully',
+    res.json({
+      message: 'Email verified successfully!',
       accessToken,
-      user,
+      user: user.toJSON(),
     });
-  } catch (err) {
-    next(err);
+  } catch (error) {
+    next(error)
   }
-};
+}
+
+
+// POST /api/auth/resend-otp
+const resendOtp = async(req,res,next) => {
+  try {
+    const {userId} = req.body
+
+    const user = await User.findById(userId).select('+otp +otpExpiresAt');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ message: 'Email is already verified' });
+    }
+
+    // Cooldown — only resend if previous OTP has expired
+    if (user.otpExpiresAt && user.otpExpiresAt > new Date()) {
+      const secondsLeft = Math.ceil((user.otpExpiresAt - new Date()) / 1000);
+      return res.status(429).json({
+        message: `Please wait ${secondsLeft} seconds before requesting a new code.`,
+      });
+    }
+
+    const otp = generateOTP();
+    user.otp = otp;
+    user.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+
+    await sendOTPEmail(user.email, user.name, otp);
+
+    res.json({ message: 'New verification code sent to your email.' });
+  } catch (error) {
+    next(error)
+  }
+}
 
 // POST /api/auth/login
 const login = async (req, res, next) => {
@@ -52,11 +156,22 @@ const login = async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
+    // Block unverified users
+    if (!user.isVerified) {
+      return res.status(403).json({
+        message: 'Please verify your email before logging in.',
+        userId: user._id,
+        needsVerification: true,
+      });
+    }
+
+
     const accessToken = generateAccessToken({ id: user._id, role: user.role });
     const refreshToken = generateRefreshToken({ id: user._id });
 
     // Store refresh token (limit to 5 active sessions)
     user.refreshTokens.push(refreshToken);
+    
     if (user.refreshTokens.length > 5) {
       user.refreshTokens = user.refreshTokens.slice(-5);
     }
@@ -158,4 +273,6 @@ export {
     refresh,
     verifyToken,
     getMe,
+    resendOtp,
+    verifyOtp
 }
