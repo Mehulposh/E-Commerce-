@@ -5,6 +5,8 @@ import mongoose from 'mongoose'
 import paymentRoutes from './routes/paymentRoutes.js'
 import errorHandler from './middlewares/errorHandler.js'
 
+import { connectRabbitMQ } from './events/Rabbitmq.js'
+import { registerPaymentConsumers } from './events/PaymentConsumer.js'
 dotenv.config()
 
 const app = express()
@@ -25,16 +27,22 @@ app.get('/health', (req, res) =>
 //service error handler middleware
 app.use(errorHandler);
 
-//mongodb connection
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => {
+async function startServer() {
+  try {
+    await mongoose.connect(process.env.MONGO_URI);
     console.log('✅ MongoDB connected');
+
+    await connectRabbitMQ();
+    await registerPaymentConsumers();
+
     app.listen(process.env.PORT, () =>
-      console.log(`💳 Payment Service running on port ${process.env.PORT}`)
+      console.log(` Payment Service running on port ${process.env.PORT}`)
     );
-  })
-  .catch((err) => {
-    console.error('❌ MongoDB connection error:', err.message);
+  } catch (err) {
+    console.error('❌ Server error:', err.message);
     process.exit(1);
-  });
+  }
+}
+
+
+startServer()
