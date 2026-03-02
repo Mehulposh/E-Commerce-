@@ -70,7 +70,7 @@ const sendEmail = async ({ to, subject, html, text }) => {
   }
 
   const mailOptions = {
-    from: `"${process.env.EMAIL_FROM_NAME || 'Store'}" <${process.env.SMTP_USER || 'noreply@store.com'}>`,
+    from: `"${process.env.EMAIL_FROM_NAME || 'Store'}" <${process.env.EMAIL_FROM}>`,
     to,
     subject,
     text,
