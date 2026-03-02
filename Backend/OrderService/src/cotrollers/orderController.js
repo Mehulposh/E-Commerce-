@@ -1,6 +1,6 @@
 import  Order from '../models/order.js'
 import { getProduct,InitiatePayment,getPaymentStatus } from '../service/Service-client.js'
-
+import { publishOrderCreated, publishOrderCancelled, publishOrderStatusUpdate } from '../events/OrderPublisher.js';
 //POST api/orders
 const createOrders = async(req,res,next) =>{
     try {
@@ -78,6 +78,9 @@ const createOrders = async(req,res,next) =>{
         console.error('[Order] Payment error response:', error.response?.data);
         console.error('[Order] Payment error status:', error.response?.status);
         }
+
+        // ── Publish order.created event (Phase 3 - RabbitMQ) ─────
+        await publishOrderCreated(order)
 
         res.status(201).json({
             message: 'Order created successfully',
@@ -163,6 +166,9 @@ const updateOrderStatus = async(req,res,next) => {
         order.statusHistory.push({ status, note: notes || `Status changed from ${previousStatus}` });
         await order.save();
 
+        // ── Publish order.status.updated event ───────────────────
+        await publishOrderStatusUpdate(order, previousStatus)
+
         res.json({ message: 'Order status updated', order });
     } catch (error) {
         next(error)
@@ -173,7 +179,7 @@ const updateOrderStatus = async(req,res,next) => {
 // POST /api/orders/:id/cancel
 const CancelOrder = async(req,res,next) => {
     try {
-        const order = await Order.findById(req,params.id)
+        const order = await Order.findById(req.params.id)
 
         if (!order) return res.status(404).json({ message: 'Order not found' });
 
@@ -186,16 +192,19 @@ const CancelOrder = async(req,res,next) => {
         if (!cancellableStatuses.includes(order.status)) {
             return res.status(400).json({
                 message: `Cannot cancel order with status "${order.status}"`,
-        });
-
+            });
+        }
         order.status = 'cancelled'
 
         order.statusHistory.push({ status: 'cancelled', note: req.body.reason || 'Cancelled by user' })
 
         await order.save()
 
+        // ── Publish order.cancelled event ────────────────────────
+        await publishOrderCancelled(order)
+        
         res.json({message: 'Order Cancelled', order})
-    }
+    
     } catch (error) {
         next(error)
     }
@@ -217,7 +226,7 @@ const payOrder = async(req,res,next) => {
             return res.status(400).json({ message: 'Order is already paid' });
         }
 
-         const paymentData = await initiatePayment({
+         const paymentData = await InitiatePayment({
             orderId: order._id.toString(),
             orderNumber: order.orderNumber,
             userId: order.userId,
@@ -226,10 +235,10 @@ const payOrder = async(req,res,next) => {
             ...req.body, // allow passing card/method info
         });
 
-        order.paymentId = paymentData.payment.id;
+        order.paymentId = paymentData.newPayment.paymentIdid;
         await order.save();
 
-        res.json({message: 'Payment initiated', order, payment: paymentData.payment})
+        res.json({message: 'Payment initiated', order, payment: paymentData.newPayment})
     } catch (error) {
         next(error)
     }
