@@ -54,38 +54,13 @@ const createOrders = async(req,res,next) =>{
             notes,
             statusHistory: [{ status: 'pending', note: 'Order created' }],
         });
-
-        // ── 3. Initiate payment ───────────────────────────────────
-        let paymentData
-
-        try {
-            paymentData = await InitiatePayment({
-                orderId: order._id.toString(),
-                orderNumber: order.orderNumber,
-                userId,
-                amount: totalAmount,
-                currency: 'USD',
-            })
-
-            console.log('[Order] Payment response:', JSON.stringify(paymentData)); 
-            order.paymentId = paymentData.newPayment.paymentId
-
-            await order.save()
-
-        } catch (error) {
-            console.error('[Order] Payment initiation failed:', error.message);
-            console.error('[Order] Payment initiation failed:', error.message);
-        console.error('[Order] Payment error response:', error.response?.data);
-        console.error('[Order] Payment error status:', error.response?.status);
-        }
-
+        
         // ── Publish order.created event (Phase 3 - RabbitMQ) ─────
         await publishOrderCreated(order)
 
         res.status(201).json({
             message: 'Order created successfully',
-            order,
-            payment: paymentData?.newPayment || null,
+            order
         });
     } catch (error) {
          
@@ -235,7 +210,7 @@ const payOrder = async(req,res,next) => {
             ...req.body, // allow passing card/method info
         });
 
-        order.paymentId = paymentData.newPayment.paymentIdid;
+        order.paymentId = paymentData.newPayment.paymentId;
         await order.save();
 
         res.json({message: 'Payment initiated', order, payment: paymentData.newPayment})
