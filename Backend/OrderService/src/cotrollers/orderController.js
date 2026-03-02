@@ -56,7 +56,7 @@ const createOrders = async(req,res,next) =>{
         });
         
         // ── Publish order.created event (Phase 3 - RabbitMQ) ─────
-        await publishOrderCreated(order)
+        await publishOrderCreated(order, req.user.email)
 
         res.status(201).json({
             message: 'Order created successfully',

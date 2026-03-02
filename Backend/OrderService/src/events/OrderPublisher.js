@@ -4,14 +4,16 @@ import { publishEvent , EXCHANGES , ROUTING_KEYS } from "./Rabbitmq.js";
  * Published when a new order is created
  * Payment Service listens to this and initiates payment
  */
-const publishOrderCreated = async(order) => {
+const publishOrderCreated = async(order, userEmail=null) => {
     await publishEvent(EXCHANGES.ORDERS , ROUTING_KEYS.ORDER_CREATED , {
         orderId: order._id.toString(),
         orderNumber: order.orderNumber,
         userId: order.userId,
         items: order.items,
         totalAmount: order.totalAmount,
-        currency: 'USD'
+        currency: 'USD',
+        userEmail,
+        shippingAddress: order.shippingAddress,
     });
 };
 
